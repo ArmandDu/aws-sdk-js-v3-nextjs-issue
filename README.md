@@ -1,34 +1,44 @@
-This is a [Next.js](https://nextjs.org/) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# AWS Transcribe example using aws-sdk-js-v3 and Next.JS
 
-## Getting Started
+Issue reproduction repository.
 
-First, run the development server:
+When using @aws-sdk/client-transcribe-streaming@3.2.0 with NextJS 10 (or previous version), transcribe client only work in development mode.
 
-```bash
-npm run dev
-# or
-yarn dev
+After building the application and running in production mode, we get the following error when attempting to start the transcribe command : `“Error: Expected SignatureV4 signer, please check the client constructor”`
+
+I've manage to pinpoint the issue to the middleware-sdk-transcribe-streaming [configuration file](https://github.com/aws/aws-sdk-js-v3/blob/master/packages/middleware-sdk-transcribe-streaming/src/configuration.ts)
+
+```javascript
+// starting at line 34 to line 37
+
+const validateSigner = (signer: any): signer is BaseSignatureV4 =>
+  // We cannot use instanceof here. Because we might import the wrong SignatureV4
+  // constructor here as multiple version of packages maybe installed here.
+  (signer.constructor.toString() as string).indexOf("SignatureV4") >= 0;
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The `validateSigner` expects the signer object's string representation to contain "SignatureV4".
 
-You can start editing the page by modifying `pages/index.js`. The page auto-updates as you edit the file.
+Unfortunately, as we are using it in the front-end, the code is bundled and transformed to make the file size smaller. Removing the "SignatureV4" information.
 
-[API routes](https://nextjs.org/docs/api-routes/introduction) can be accessed on [http://localhost:3000/api/hello](http://localhost:3000/api/hello). This endpoint can be edited in `pages/api/hello.js`.
+## How to Reproduce
 
-The `pages/api` directory is mapped to `/api/*`. Files in this directory are treated as [API routes](https://nextjs.org/docs/api-routes/introduction) instead of React pages.
+First, clone this repository, and install the dependencies using `yarn`.
 
-## Learn More
+You'll need an AWS account an IAM policy with authorization for Transcribe service.
 
-To learn more about Next.js, take a look at the following resources:
+### Working Scenario : Dev mode
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+To test the working version, run `yarn dev` and navigate to http://localhost:3000 (default port).
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js/) - your feedback and contributions are welcome!
+You'll be prompted to fill in the Access ID, Secret Key and your region. (Session Secret is optional and only en-US is set at the moment.)
 
-## Deploy on Vercel
+Finally click on the `Start` button, allow microphones permissions and start speaking into your microphone. You should see the transcript displayed in the page.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/import?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+If an error occur, you should be prompted with an `alert` message.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/deployment) for more details.
+### Crashing Scenario : Production Mode
+
+To test the issue, run `yarn build` then `yarn start` and navigate to http://localhost:3000 again.
+
+Fill in the form again and after clicking on the `start` button and allowing microphone permissions, an `alert` message should appear: `“Error: Expected SignatureV4 signer, please check the client constructor”`
